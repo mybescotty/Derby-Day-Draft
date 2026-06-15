@@ -617,6 +617,22 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     to { opacity: 1; transform: translateY(0); }
   }
 
+  #draftControls {
+    text-align: center;
+  }
+
+  #draftSuspense {
+    font-size: 1.15rem;
+    font-weight: bold;
+    color: var(--green-dark);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
   .team-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -758,6 +774,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     <h2>3. Draft in Progress</h2>
     <div id="liveFeed"></div>
     <div id="inProgressRosters" class="team-grid"></div>
+    <div id="draftControls" class="button-row">
+      <p id="draftSuspense" class="hidden">Selecting next pick&hellip;</p>
+      <button id="nextPickBtn" class="hidden">Next Pick</button>
+    </div>
   </section>
 
   <section id="results-section" class="hidden">
@@ -794,6 +814,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   const draftSection = document.getElementById('draft-section');
   const liveFeed = document.getElementById('liveFeed');
   const inProgressRosters = document.getElementById('inProgressRosters');
+  const draftControls = document.getElementById('draftControls');
+  const draftSuspense = document.getElementById('draftSuspense');
+  const nextPickBtn = document.getElementById('nextPickBtn');
   const resultsSection = document.getElementById('results-section');
   const teamSheets = document.getElementById('teamSheets');
   const startDraftBtn = document.getElementById('startDraftBtn');
@@ -925,11 +948,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  const REVEAL_DELAY_MS = 7000;
+
   async function startDraft() {
     if (playerPool.length === 0) return;
 
     draftState.rosters = [[], [], []];
     draftState.pickOrder = shuffleArray(playerPool);
+    draftState.currentPick = 0;
 
     resultsSection.classList.add('hidden');
     teamSheets.innerHTML = '';
@@ -940,34 +966,44 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
       '<ol class="roster-list" id="roster-list-' + i + '"></ol></div>'
     ).join('');
     draftSection.classList.remove('hidden');
+    draftControls.classList.remove('hidden');
+    nextPickBtn.classList.add('hidden');
 
     startDraftBtn.disabled = true;
     redraftBtn.disabled = true;
 
-    await runDraftAnimation();
-
-    renderTeamSheets();
-    resultsSection.classList.remove('hidden');
-
-    startDraftBtn.disabled = false;
-    redraftBtn.disabled = false;
+    await revealNextPick();
   }
 
-  async function runDraftAnimation() {
-    const DELAY_MS = 600;
+  async function revealNextPick() {
     const pickOrder = draftState.pickOrder;
+    const pickNum = draftState.currentPick;
 
-    for (let pickNum = 0; pickNum < pickOrder.length; pickNum++) {
-      const player = pickOrder[pickNum];
-      const teamIdx = pickNum % 3;
+    nextPickBtn.classList.add('hidden');
+    draftSuspense.classList.remove('hidden');
 
-      draftState.rosters[teamIdx].push(player);
-      appendLiveFeedEntry(pickNum + 1, teamIdx, player);
-      appendToInProgressRoster(teamIdx, player);
+    await delay(REVEAL_DELAY_MS);
 
-      if (pickNum < pickOrder.length - 1) {
-        await delay(DELAY_MS);
-      }
+    const player = pickOrder[pickNum];
+    const teamIdx = pickNum % 3;
+
+    draftState.rosters[teamIdx].push(player);
+    appendLiveFeedEntry(pickNum + 1, teamIdx, player);
+    appendToInProgressRoster(teamIdx, player);
+    draftState.currentPick++;
+
+    draftSuspense.classList.add('hidden');
+
+    if (draftState.currentPick >= pickOrder.length) {
+      draftControls.classList.add('hidden');
+      renderTeamSheets();
+      resultsSection.classList.remove('hidden');
+      startDraftBtn.disabled = false;
+      redraftBtn.disabled = false;
+    } else {
+      const nextTeamName = teamNames[draftState.currentPick % 3];
+      nextPickBtn.textContent = 'Reveal Next Pick — ' + nextTeamName;
+      nextPickBtn.classList.remove('hidden');
     }
   }
 
@@ -1103,6 +1139,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
   startDraftBtn.addEventListener('click', startDraft);
   redraftBtn.addEventListener('click', startDraft);
   downloadPdfBtn.addEventListener('click', exportTeamSheetsPdf);
+
+  nextPickBtn.addEventListener('click', () => {
+    nextPickBtn.disabled = true;
+    revealNextPick().then(() => { nextPickBtn.disabled = false; });
+  });
 </script>
 </body>
 </html>
