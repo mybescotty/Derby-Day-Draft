@@ -839,11 +839,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 
   function detectFormFormat(headerRow) {
     let nameCol = -1;
+    let tierCol = -1;
     const posCols = [];
     for (let i = 0; i < headerRow.length; i++) {
       const h = normalizeCell(headerRow[i]).toLowerCase();
       if (h.includes('your') && h.includes('name')) nameCol = i;
       if (h.includes('position') || h.includes('prefer')) posCols.push(i);
+      if (h.includes('team') && !h.includes('start')) tierCol = i;
     }
     if (nameCol === -1) {
       for (let i = 0; i < headerRow.length; i++) {
@@ -851,7 +853,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
         if (h.includes('name') && !h.includes('last modified')) { nameCol = i; break; }
       }
     }
-    if (nameCol !== -1 && posCols.length > 0) return { nameCol: nameCol, posCols: posCols };
+    if (nameCol !== -1 && posCols.length > 0) return { nameCol: nameCol, posCols: posCols, tierCol: tierCol };
     return null;
   }
 
@@ -877,7 +879,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
           const code = FORM_POSITION_MAP[raw];
           if (code) banned.add(code);
         }
-        pool.push({ id: id++, name: name, bannedPositions: banned });
+        const tier = formFormat.tierCol !== -1 ? Number(normalizeCell(row[formFormat.tierCol])) : 0;
+        pool.push({ id: id++, name: name, bannedPositions: banned, tier: tier || 0 });
       }
       if (pool.length === 0) {
         throw new Error('No players found in the uploaded file.');
@@ -1005,7 +1008,15 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     if (playerPool.length === 0) return;
 
     draftState.rosters = [[], [], []];
-    draftState.pickOrder = shuffleArray(playerPool);
+    const hasTiers = playerPool.some(function(p) { return p.tier > 0; });
+    if (hasTiers) {
+      var t1 = shuffleArray(playerPool.filter(function(p) { return p.tier === 1; }));
+      var t2 = shuffleArray(playerPool.filter(function(p) { return p.tier === 2; }));
+      var t3 = shuffleArray(playerPool.filter(function(p) { return p.tier === 3; }));
+      draftState.pickOrder = t1.concat(t2, t3);
+    } else {
+      draftState.pickOrder = shuffleArray(playerPool);
+    }
     draftState.currentPick = 0;
 
     resultsSection.classList.add('hidden');
