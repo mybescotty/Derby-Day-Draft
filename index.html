@@ -796,6 +796,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     P: 'Pitcher', C: 'Catcher', '1B': 'First Base', '2B': 'Second Base',
     '3B': 'Third Base', SS: 'Shortstop', LF: 'Left Field', CF: 'Center Field', RF: 'Right Field'
   };
+  const FORM_POSITION_MAP = {
+    'pitcher': 'P', 'catcher': 'C',
+    '1st base': '1B', '2nd base': '2B', '3rd base': '3B',
+    'short stop': 'SS', 'shortstop': 'SS',
+    'left outfield': 'LF', 'centre outfield': 'CF', 'center outfield': 'CF',
+    'right outfield': 'RF',
+    'left field': 'LF', 'center field': 'CF', 'centre field': 'CF', 'right field': 'RF'
+  };
 
   let teamNames = ['Team 1', 'Team 2', 'Team 3'];
   let playerPool = [];
@@ -829,12 +837,54 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
     return String(value).trim();
   }
 
+  function detectFormFormat(headerRow) {
+    let nameCol = -1;
+    const posCols = [];
+    for (let i = 0; i < headerRow.length; i++) {
+      const h = normalizeCell(headerRow[i]).toLowerCase();
+      if (h.includes('your') && h.includes('name')) nameCol = i;
+      if (h.includes('position') || h.includes('prefer')) posCols.push(i);
+    }
+    if (nameCol === -1) {
+      for (let i = 0; i < headerRow.length; i++) {
+        const h = normalizeCell(headerRow[i]).toLowerCase();
+        if (h.includes('name') && !h.includes('last modified')) { nameCol = i; break; }
+      }
+    }
+    if (nameCol !== -1 && posCols.length > 0) return { nameCol: nameCol, posCols: posCols };
+    return null;
+  }
+
   function parseRosterData(rows) {
     if (!rows || rows.length === 0) {
       throw new Error('The uploaded file appears to be empty.');
     }
 
     const headerRow = rows[0] || [];
+    const formFormat = detectFormFormat(headerRow);
+
+    if (formFormat) {
+      const pool = [];
+      let id = 1;
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r] || [];
+        const name = normalizeCell(row[formFormat.nameCol]);
+        if (name === '') continue;
+        const banned = new Set();
+        for (let i = 0; i < formFormat.posCols.length; i++) {
+          const raw = normalizeCell(row[formFormat.posCols[i]]).toLowerCase();
+          if (raw === '') continue;
+          const code = FORM_POSITION_MAP[raw];
+          if (code) banned.add(code);
+        }
+        pool.push({ id: id++, name: name, bannedPositions: banned });
+      }
+      if (pool.length === 0) {
+        throw new Error('No players found in the uploaded file.');
+      }
+      return { teamNames: ['Team 1', 'Team 2', 'Team 3'], playerPool: pool, nextId: id };
+    }
+
     const names = [0, 1, 2].map((i) => {
       const cell = normalizeCell(headerRow[i]);
       return cell === '' ? ('Team ' + (i + 1)) : cell;
@@ -904,9 +954,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var n,r,i,a,
 
   function renderBanTable() {
     const rowsHtml = playerPool.map((player) => {
-      const cells = POSITIONS.map((pos) =>
-        '<td><input type="checkbox" data-player-id="' + player.id + '" data-pos="' + pos + '"></td>'
-      ).join('');
+      const cells = POSITIONS.map((pos) => {
+        const checked = player.bannedPositions.has(pos) ? ' checked' : '';
+        return '<td><input type="checkbox" data-player-id="' + player.id + '" data-pos="' + pos + '"' + checked + '></td>';
+      }).join('');
       return '<tr><td class="player-name-cell">' + escapeHtml(player.name) + '</td>' + cells + '</tr>';
     }).join('');
 
